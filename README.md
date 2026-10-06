@@ -1,104 +1,86 @@
-<p align="center">
-  <img src="docs/supportflow-banner.svg" alt="SupportFlow — plataforma SaaS de soporte técnico" width="100%" />
-</p>
-
-<p align="center">
-  <strong>Gestión de soporte técnico con SLA, automatización, auditoría y tiempo real.</strong>
-</p>
-
-<p align="center">
-  <img alt="React" src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white" />
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
-  <img alt="Laravel" src="https://img.shields.io/badge/Laravel-12-FF2D20?logo=laravel&logoColor=white" />
-  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white" />
-  <img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" />
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-22C55E" />
-</p>
-
 # SupportFlow
 
-Plataforma SaaS de gestión de incidencias y soporte técnico construida como proyecto de portfolio por **Hugo Coarasa Oliva**. SupportFlow reúne tickets, conversaciones, asignaciones, acuerdos de nivel de servicio, auditoría, conocimiento y métricas en una experiencia responsive orientada a equipos profesionales.
+Una mesa de ayuda para equipos pequeños, construida como proyecto personal para practicar un flujo full-stack completo: desde la autorización en la API hasta los estados de carga en React.
 
-Este repositorio demuestra una arquitectura full-stack moderna: dominio multiempresa, autorización en servidor, métricas derivadas de datos reales, infraestructura reproducible y una interfaz cuidada para operaciones de soporte.
+[![Frontend checks](https://img.shields.io/badge/frontend-lint%20%2B%20tests%20%2B%20build-2563eb)](#pruebas)
+[![License: MIT](https://img.shields.io/badge/license-MIT-475569)](LICENSE)
 
-## Qué incluye
+## Por qué hice este proyecto
 
-- Panel ejecutivo con tickets por estado, primera respuesta, resolución, cumplimiento de SLA y carga del equipo.
-- Bandeja con búsqueda y filtros, vista detallada, respuestas públicas y notas internas.
-- Ciclo de estados `nuevo → abierto → pendiente → resuelto → cerrado`; cerrar exige una resolución.
-- Asignación manual a agente/equipo y base preparada para reglas de autoasignación.
-- Autenticación por Laravel Sanctum, recuperación de contraseña y rate limiting.
-- Roles solicitante, agente y administrador aplicados mediante políticas del backend.
-- Aislamiento por organización: un solicitante solo ve sus tickets y el resto de perfiles queda limitado a su organización.
-- SLA por prioridad, detección de incumplimiento y métricas calculadas desde PostgreSQL.
-- Auditoría inmutable de creación, edición, comentarios, asignación, resolución, cierre y borrado.
-- Canal privado de Laravel Reverb para cambios en tickets y organizaciones.
-- Adjuntos privados modelados con metadatos, hash y límites de tipo/tamaño.
-- Exportación CSV, base de conocimiento, datos demo y correo local con Mailpit.
-- Interfaz en español, navegación por teclado, estados de carga/vacíos/error y tema claro/oscuro persistente.
-- Contrato [OpenAPI 3.1](docs/openapi.yaml), CI, Docker Compose y licencia MIT.
+Quería salir del típico CRUD de portfolio. Un sistema de soporte parecía un buen problema porque obliga a resolver cosas que suelen quedar fuera de una demo sencilla: quién puede ver cada ticket, qué ocurre al reasignarlo, cómo distinguir una respuesta de una nota interna y de dónde salen las métricas del panel.
 
-## Vista del producto
+El caso ficticio es **Lumen Norte**, un equipo que recibe incidencias de cuenta, facturación e integraciones. Los datos de ejemplo incluyen tickets resueltos, otros fuera de SLA y carga desigual entre agentes; no intentan mostrar una operación perfecta.
 
-La interfaz se ha revisado en navegador en sus vistas principales: inicio de sesión, panel ejecutivo y bandeja de tickets. La carpeta `docs/screenshots` queda reservada para capturas rasterizadas de una instancia Docker completa.
+## Recorrido rápido
 
-| Panel ejecutivo | Operación diaria |
-|---|---|
-| Métricas de volumen, tiempos de respuesta, resolución y SLA | Búsqueda, filtros, prioridades, estados y asignación |
-| Gráficos de tendencia y carga por agente | Conversación pública, notas internas y auditoría |
+Con `VITE_DEMO_MODE=true` se puede revisar el frontend sin levantar la API:
+
+1. El panel resume volumen, primera respuesta, resolución y cumplimiento de SLA.
+2. La bandeja permite buscar, filtrar por estado y exportar el resultado a CSV.
+3. Cada ticket muestra conversación, notas internas, asignación y tiempo restante del SLA.
+4. El formulario de alta incluye categoría, prioridad, descripción y adjuntos.
+5. La base de conocimiento separa guías operativas y documentación administrativa.
+
+El modo conectado usa la API Laravel y autenticación mediante Sanctum.
+
+## Decisiones que tomé
+
+| Decisión | Motivo | Coste o límite |
+|---|---|---|
+| `organization_id` en las entidades del dominio | El aislamiento no depende de filtros del frontend | Todas las consultas sensibles deben aplicar el ámbito de organización |
+| Políticas Laravel para tickets y adjuntos | Centralizar la autorización y poder probarla | Hay que mantener las políticas al añadir acciones nuevas |
+| Notas internas en la misma conversación | Conservan el orden cronológico del ticket | La API debe retirarlas explícitamente para solicitantes |
+| Fechas de primera respuesta y resolución persistidas | El panel calcula métricas sobre hechos, no sobre valores simulados | Los cambios de estado deben actualizarse de forma transaccional |
+| Redis para colas y caché; Reverb para eventos | Separar trabajo asíncrono y actualizaciones en tiempo real | Añade servicios que no compensarían en una aplicación muy pequeña |
+| Un modo demo en el frontend | Permite revisar la interfaz sin Docker | No sustituye una prueba end-to-end contra la API |
+
+La autoasignación actual usa una estrategia sencilla: el agente activo con menos tickets abiertos. No pretende ser un motor de reglas; es un punto de partida fácil de explicar y probar.
 
 ## Arquitectura
 
 ```mermaid
 flowchart LR
-    U[React + TypeScript\nVite / Tailwind / Query] -->|REST + Bearer| API[Laravel API\nSanctum + Policies]
-    U <-->|WebSocket privado| R[Laravel Reverb]
-    API --> PG[(PostgreSQL)]
+    UI[React + TypeScript] -->|REST / Sanctum| API[Laravel]
+    UI <-->|canales privados| WS[Reverb]
+    API --> DB[(PostgreSQL)]
     API --> REDIS[(Redis)]
-    API --> STORE[(Adjuntos privados)]
-    API --> MAIL[Mailpit / SMTP]
-    API --> Q[Worker de colas]
-    Q --> REDIS
-    R --> REDIS
+    API --> FILES[(Adjuntos privados)]
+    API --> MAIL[Mailpit]
+    WORKER[Queue worker] --> REDIS
+    WORKER --> DB
+    WS --> REDIS
 ```
 
 ```mermaid
 erDiagram
     ORGANIZATION ||--o{ USER : contiene
-    USER }o--o{ ROLE : asume
-    ROLE }o--o{ PERMISSION : concede
+    USER }o--o{ ROLE : tiene
     ORGANIZATION ||--o{ TEAM : organiza
     TEAM }o--o{ USER : agrupa
     ORGANIZATION ||--o{ TICKET : aisla
     USER ||--o{ TICKET : solicita
     USER o|--o{ TICKET : atiende
-    TEAM o|--o{ TICKET : recibe
-    CATEGORY ||--o{ TICKET : clasifica
-    PRIORITY ||--o{ TICKET : prioriza
-    PRIORITY ||--o{ SLA_RULE : define
     TICKET ||--o{ TICKET_COMMENT : conversa
     TICKET ||--o{ ATTACHMENT : adjunta
     TICKET ||--o{ TICKET_ASSIGNMENT : registra
     TICKET ||--o{ AUDIT_EVENT : audita
-    KNOWLEDGE_CATEGORY ||--o{ KNOWLEDGE_ARTICLE : contiene
+    PRIORITY ||--o{ SLA_RULE : define
 ```
 
-## Stack
+## Tecnologías
 
-| Área | Tecnología |
-|---|---|
-| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, TanStack Query, Recharts |
-| Backend | PHP 8.3, Laravel 12, Sanctum, Reverb |
-| Datos | PostgreSQL 17, Redis 7 |
-| Calidad | ESLint, TypeScript, Vitest, Testing Library, Pest, Pint |
-| Operación | Docker Compose, Nginx, Mailpit, GitHub Actions |
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, TanStack Query y Recharts.
+- **Backend:** PHP 8.3, Laravel 12, Sanctum y Reverb.
+- **Datos:** PostgreSQL 17 y Redis 7.
+- **Pruebas:** Vitest, Testing Library y Pest.
+- **Entorno:** Docker Compose, Nginx, Mailpit y GitHub Actions.
 
-## Inicio rápido con Docker
+## Puesta en marcha
 
-Requisitos: Docker Desktop con Compose v2 y PowerShell 7.
+Se necesita Docker Desktop con Compose v2 y PowerShell 7.
 
 ```powershell
-git clone <url-del-repositorio> SupportFlow
+git clone https://github.com/Hut0Xx/SupportFlow.git
 cd SupportFlow
 Copy-Item .env.example .env
 Copy-Item backend/.env.example backend/.env
@@ -106,74 +88,60 @@ Copy-Item frontend/.env.example frontend/.env
 ./scripts/setup.ps1
 ```
 
-El script construye las imágenes, genera `APP_KEY`, migra, carga datos de demostración e inicia todos los servicios:
+El script genera la clave de Laravel, ejecuta las migraciones y seeders y arranca:
 
-- Aplicación: <http://localhost:5173>
-- API: <http://localhost:8000/api/v1>
-- Salud: <http://localhost:8000/up>
-- Reverb: `ws://localhost:8080`
-- Mailpit: <http://localhost:8025>
+| Servicio | URL |
+|---|---|
+| Frontend | <http://localhost:5173> |
+| API | <http://localhost:8000/api/v1> |
+| Health check | <http://localhost:8000/up> |
+| Mailpit | <http://localhost:8025> |
+| Reverb | `ws://localhost:8080` |
 
-Comandos manuales equivalentes:
-
-```powershell
-docker compose build
-docker compose up -d postgres redis mailpit
-docker compose run --rm api php artisan key:generate
-docker compose run --rm api php artisan migrate --seed
-docker compose up -d
-```
-
-## Desarrollo del frontend
+### Solo frontend
 
 ```powershell
 pnpm install
+Copy-Item frontend/.env.example frontend/.env
+# Cambiar VITE_DEMO_MODE a true
 pnpm dev
 ```
 
-Para navegar por la interfaz sin backend, establece `VITE_DEMO_MODE=true` en `frontend/.env`. En modo conectado se usa `VITE_API_URL` y el token Sanctum se almacena localmente para esta demo de portfolio.
+## Cuentas de desarrollo
 
-## Cuentas demo
+La contraseña se toma de `DEMO_PASSWORD`. El valor del archivo de ejemplo es únicamente local.
 
-La contraseña procede de `DEMO_PASSWORD`; el valor de ejemplo solo es válido para desarrollo.
-
-| Rol | Correo | Contraseña de ejemplo |
-|---|---|---|
-| Solicitante | `solicitante@supportflow.local` | `SupportFlow2026!` |
-| Agente | `agente@supportflow.local` | `SupportFlow2026!` |
-| Administrador | `admin@supportflow.local` | `SupportFlow2026!` |
-
-No reutilices estas credenciales ni los secretos de los `.env.example` en producción.
+| Rol | Correo |
+|---|---|
+| Solicitante | `solicitante@supportflow.local` |
+| Agente | `agente@supportflow.local` |
+| Administrador | `admin@supportflow.local` |
 
 ## API
 
-El contrato está en [docs/openapi.yaml](docs/openapi.yaml) y puede abrirse en Swagger Editor, Redocly o cualquier visor OpenAPI 3.1. Rutas principales:
+El contrato completo está en [`docs/openapi.yaml`](docs/openapi.yaml). Algunas rutas relevantes:
 
 ```text
 POST   /api/v1/auth/login
-POST   /api/v1/auth/logout
-GET    /api/v1/me
 GET    /api/v1/dashboard
 GET    /api/v1/tickets
 POST   /api/v1/tickets
-GET    /api/v1/tickets/{id}
-PATCH  /api/v1/tickets/{id}
 POST   /api/v1/tickets/{id}/comments
 POST   /api/v1/tickets/{id}/assign
 POST   /api/v1/tickets/{id}/resolve
 POST   /api/v1/tickets/{id}/close
-GET    /api/v1/tickets/export
+GET    /api/v1/attachments/{id}/download
 ```
 
-## Pruebas y calidad
+La descarga de un adjunto vuelve a comprobar la política del ticket; conocer una URL no da acceso al archivo. Las notas internas tampoco se serializan para un solicitante.
 
-Todo el repositorio:
+## Pruebas
 
 ```powershell
 ./scripts/check.ps1
 ```
 
-Por separado:
+O por separado:
 
 ```powershell
 pnpm lint
@@ -183,59 +151,33 @@ docker compose run --rm api ./vendor/bin/pint --test
 docker compose run --rm -e DB_DATABASE=supportflow_test api php artisan test
 ```
 
-Las pruebas backend documentan los criterios críticos: privacidad entre solicitantes, bloqueo de administración para agentes, resolución obligatoria al cerrar y creación de auditoría.
+Las pruebas backend cubren, entre otros casos, que un solicitante no vea tickets ajenos, que un agente no pueda borrar tickets, que un ticket necesite resolución antes de cerrarse y que los cambios de estado dejen auditoría.
 
-## Seguridad
+## Estado real del proyecto
 
-- Autorización en políticas Laravel y consultas acotadas por `organization_id`.
-- Rate limits diferenciados para autenticación y API.
-- Validación de relaciones contra la organización del usuario.
-- Notas internas omitidas para solicitantes.
-- Adjuntos en disco privado; no se publican rutas físicas.
-- CORS restringido al origen configurado, cookies seguras compatibles con Sanctum y canales Reverb privados.
-- Secretos solo mediante variables de entorno; los valores del repositorio son ejemplos de desarrollo.
+En el entorno donde desarrollé esta versión pude ejecutar el lint, las pruebas de interfaz y el build de producción. Los tests de Laravel están escritos, pero no pude ejecutarlos allí porque no había PHP ni Docker instalados; la CI los ejecuta en un runner con PostgreSQL.
 
-Para producción: usa un gestor de secretos, TLS extremo a extremo, almacenamiento S3 privado con URLs temporales, worker supervisado, backups cifrados de PostgreSQL, observabilidad y rotación de claves.
+Lo siguiente que haría sería:
+
+- completar el CRUD de artículos de conocimiento;
+- añadir una prueba end-to-end del flujo crear → asignar → responder → resolver;
+- mover adjuntos a un bucket S3 privado con URLs temporales;
+- sustituir el token guardado en `localStorage` por el flujo SPA con cookie `HttpOnly` de Sanctum.
+
+He dejado estos límites por escrito porque forman parte de las decisiones del proyecto, no porque sean características terminadas.
 
 ## Estructura
 
 ```text
-SupportFlow/
-├── backend/                 # Laravel: API, dominio, políticas, migraciones y tests
-│   ├── app/
-│   ├── database/
-│   ├── routes/
-│   └── tests/
-├── frontend/                # React, páginas, componentes y pruebas
-│   └── src/
-├── docs/
-│   ├── openapi.yaml
-│   └── screenshots/
-├── scripts/                 # Puesta en marcha y verificación
-├── .github/workflows/ci.yml
-└── docker-compose.yml
+backend/          API, políticas, servicios, migraciones y pruebas
+frontend/src/     páginas, componentes, acceso a datos y pruebas
+docs/             contrato OpenAPI
+scripts/          instalación y comprobaciones locales
+.github/          integración continua
 ```
-
-## Verificación y limitaciones
-
-Verificado en el entorno de construcción:
-
-- `pnpm lint`: correcto.
-- `pnpm test`: 2 pruebas de interfaz superadas.
-- `pnpm build`: compilación TypeScript y bundle Vite correctos.
-
-No verificado en este host porque no dispone de PHP, Composer ni Docker:
-
-- instalación de dependencias PHP;
-- migraciones/seeders PostgreSQL;
-- pruebas Pest y formato Pint;
-- arranque conjunto de Compose, Redis, Reverb y Mailpit.
-
-La CI y `scripts/check.ps1` ejecutan esas comprobaciones donde Docker/PHP estén disponibles. La interfaz incluye módulos principales funcionales; las pantallas secundarias de Equipo, Informes y Administración son puntos de integración visibles, y la autoasignación avanzada, gestión CRUD completa de conocimiento y flujo real de adjuntos requieren iteraciones posteriores.
 
 ## Autor
 
-**Hugo Coarasa Oliva** — desarrollador web full-stack junior.
+Hecho por **Hugo Coarasa Oliva** como proyecto de portfolio full-stack.
 
-Distribuido bajo la [licencia MIT](LICENSE).
-
+[MIT](LICENSE)

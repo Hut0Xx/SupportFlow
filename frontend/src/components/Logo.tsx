@@ -4,7 +4,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
       <span className="h-3.5 w-4 rounded-[4px] border-2 border-white" />
       <span className="absolute bottom-[8px] left-[10px] h-1.5 w-1.5 rotate-45 border-b-2 border-l-2 border-white" />
     </div>
-    {!compact && <div><div className="text-[15px] font-bold tracking-tight">SupportFlow</div><div className="text-[9px] font-bold uppercase tracking-[.16em] text-slate-400">Service workspace</div></div>}
+    {!compact && <div><div className="text-[15px] font-bold tracking-tight">SupportFlow</div><div className="text-[9px] font-bold uppercase tracking-[.16em] text-slate-400">Mesa de ayuda</div></div>}
   </div>;
 }
 
