@@ -1,0 +1,2 @@
+<?php
+namespace App\Models; use Illuminate\Database\Eloquent\Model; class AuditEvent extends Model { public $timestamps=false; protected $fillable=['organization_id','ticket_id','actor_id','action','old_values','new_values','ip_address','user_agent','created_at']; protected function casts(): array { return ['old_values'=>'array','new_values'=>'array','created_at'=>'datetime']; } }

@@ -1,0 +1,6 @@
+<?php
+namespace Database\Factories;
+use App\Models\Ticket;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\Factory;
+class TicketFactory extends Factory { protected $model=Ticket::class; public function definition(): array { return ['organization_id'=>fn()=>\DB::table('organizations')->insertGetId(['name'=>fake()->company(),'slug'=>fake()->unique()->slug(),'created_at'=>now(),'updated_at'=>now()]),'requester_id'=>function(array $a){ return User::factory()->create(['organization_id'=>$a['organization_id']])->id; },'category_id'=>function(array $a){ return \DB::table('categories')->insertGetId(['organization_id'=>$a['organization_id'],'name'=>'General','slug'=>'general-'.fake()->unique()->randomNumber(),'active'=>true,'created_at'=>now(),'updated_at'=>now()]); },'priority_id'=>function(array $a){ return \DB::table('priorities')->insertGetId(['organization_id'=>$a['organization_id'],'name'=>'Media','slug'=>'media-'.fake()->unique()->randomNumber(),'level'=>2,'color'=>'#1677ff','active'=>true,'created_at'=>now(),'updated_at'=>now()]); },'code'=>fn()=>'SUP-'.fake()->unique()->numberBetween(2000,9999),'title'=>fake()->sentence(),'description'=>fake()->paragraph(),'status'=>'nuevo','sla_due_at'=>now()->addDay()]; } }

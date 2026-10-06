@@ -1,0 +1,135 @@
+openapi: 3.1.0
+info:
+  title: SupportFlow API
+  version: 1.0.0
+  description: API REST para gestionar incidencias, conversaciones, asignaciones, SLA y métricas.
+  contact: { name: Hugo Coarasa Oliva }
+  license: { name: MIT }
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Desarrollo local
+tags:
+  - { name: Autenticación }
+  - { name: Tickets }
+  - { name: Métricas }
+paths:
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      summary: Iniciar sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { description: Sesión iniciada, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResponse' } } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /auth/logout:
+    post:
+      tags: [Autenticación]
+      summary: Cerrar la sesión actual
+      responses: { '200': { description: Sesión cerrada } }
+  /me:
+    get:
+      tags: [Autenticación]
+      summary: Obtener el usuario autenticado
+      responses: { '200': { description: Usuario actual } }
+  /tickets:
+    get:
+      tags: [Tickets]
+      summary: Listar tickets visibles para el usuario
+      parameters:
+        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: status, schema: { $ref: '#/components/schemas/TicketStatus' } }
+        - { in: query, name: priority_id, schema: { type: integer } }
+        - { in: query, name: category_id, schema: { type: integer } }
+        - { in: query, name: assignee_id, schema: { type: integer } }
+        - { in: query, name: team_id, schema: { type: integer } }
+        - { in: query, name: per_page, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200': { description: Colección paginada de tickets }
+    post:
+      tags: [Tickets]
+      summary: Crear un ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTicket' }
+      responses:
+        '201': { description: Ticket creado, content: { application/json: { schema: { $ref: '#/components/schemas/Ticket' } } } }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /tickets/{ticket}:
+    parameters: [ { $ref: '#/components/parameters/TicketId' } ]
+    get:
+      tags: [Tickets]
+      summary: Consultar un ticket y su conversación
+      responses: { '200': { description: Ticket }, '403': { description: Sin permiso }, '404': { description: No encontrado } }
+    patch:
+      tags: [Tickets]
+      summary: Actualizar asunto, descripción o estado operativo
+      responses: { '200': { description: Ticket actualizado } }
+    delete:
+      tags: [Tickets]
+      summary: Eliminar un ticket (solo administración)
+      responses: { '204': { description: Eliminado }, '403': { description: Sin permiso } }
+  /tickets/{ticket}/comments:
+    post:
+      tags: [Tickets]
+      summary: Añadir respuesta pública o nota interna
+      parameters: [ { $ref: '#/components/parameters/TicketId' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [body], properties: { body: { type: string, maxLength: 20000 }, is_internal: { type: boolean, default: false } } } } }
+      responses: { '201': { description: Comentario creado }, '403': { description: Las notas internas requieren rol agente } }
+  /tickets/{ticket}/assign:
+    post:
+      tags: [Tickets]
+      summary: Asignar a agente o equipo
+      parameters: [ { $ref: '#/components/parameters/TicketId' } ]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { assignee_id: { type: [integer, 'null'] }, team_id: { type: [integer, 'null'] } } } } } }
+      responses: { '200': { description: Asignación actualizada }, '403': { description: Solo agente o administrador } }
+  /tickets/{ticket}/resolve:
+    post:
+      tags: [Tickets]
+      summary: Resolver un ticket
+      parameters: [ { $ref: '#/components/parameters/TicketId' } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [resolution], properties: { resolution: { type: string, minLength: 10 } } } } } }
+      responses: { '200': { description: Ticket resuelto }, '422': { $ref: '#/components/responses/ValidationError' } }
+  /tickets/{ticket}/close:
+    post:
+      tags: [Tickets]
+      summary: Cerrar un ticket ya resuelto
+      parameters: [ { $ref: '#/components/parameters/TicketId' } ]
+      responses: { '200': { description: Ticket cerrado }, '422': { description: Falta la resolución } }
+  /tickets/export:
+    get:
+      tags: [Tickets]
+      summary: Exportar los tickets visibles en CSV
+      responses: { '200': { description: Archivo CSV, content: { text/csv: {} } } }
+  /dashboard:
+    get:
+      tags: [Métricas]
+      summary: Obtener métricas calculadas sobre tickets reales
+      responses:
+        '200':
+          description: Indicadores del panel
+          content: { application/json: { schema: { type: object, properties: { tickets_by_status: { type: object, additionalProperties: { type: integer } }, average_first_response_minutes: { type: number }, average_resolution_hours: { type: number }, sla_compliance: { type: number }, workload: { type: array, items: { type: object } } } } } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: Sanctum }
+  parameters:
+    TicketId: { in: path, name: ticket, required: true, schema: { type: integer } }
+  responses:
+    ValidationError: { description: Datos inválidos }
+  schemas:
+    LoginRequest: { type: object, required: [email, password], properties: { email: { type: string, format: email }, password: { type: string, format: password } } }
+    AuthResponse: { type: object, properties: { user: { type: object }, token: { type: string } } }
+    TicketStatus: { type: string, enum: [nuevo, abierto, pendiente, resuelto, cerrado] }
+    CreateTicket: { type: object, required: [title, description, category_id, priority_id], properties: { title: { type: string, maxLength: 180 }, description: { type: string, maxLength: 20000 }, category_id: { type: integer }, priority_id: { type: integer } } }
+    Ticket: { type: object, properties: { id: { type: integer }, code: { type: string, example: SUP-1048 }, title: { type: string }, description: { type: string }, status: { $ref: '#/components/schemas/TicketStatus' }, resolution: { type: [string, 'null'] }, sla: { type: object, properties: { due_at: { type: [string, 'null'], format: date-time }, breached: { type: boolean } } }, created_at: { type: string, format: date-time }, updated_at: { type: string, format: date-time } } }
+security:
+  - bearerAuth: []
+
